@@ -1,0 +1,12 @@
+a swap header records the page size it was made under, so /swap.img made
+# on the 4K kernel is refused by the 64K one and vice versa. If it is not active after boot,
+# re-make the header for this kernel (swap holds nothing across a reboot) and enable it.
+[Unit]
+Description=Re-header /swap.img for this kernel's page size when needed
+After=swap.target local-fs.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'swapon --show=NAME --noheadings | grep -qx /swap.img || { mkswap /swap.img >/dev/null && swapon /swap.img && echo "swap.img re-made for $(getconf PAGESIZE)-byte pages"; }'
+[Install]
+WantedBy=multi-user.target

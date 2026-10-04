@@ -1,0 +1,26 @@
+# Overlay for kindling's TP=3 stack on three GB10 boxes cabled as a triangle (no switch), on stock DGX OS.
+# Stack it LAST:  ./glm53 -f experimental/compose/tp3.yaml -f compose/triangle-dgxos.yaml up -d
+# Every setting below is read from compose/.env (scripts/install.sh writes them; see scripts/config.sh).
+services:
+  glm53:
+    volumes:
+      # dispram (dgxos/dispram): the host's dispramd lends the GB10 display carveout (2046 MiB the driver never
+      # uses) and its vLLM plugin puts the KV pool's tail there. Without the socket the plugin stands aside and KV
+      # is sized as before. Every rank needs it: vLLM sizes the pool by the smallest rank.
+      - /run/dispram:/run/dispram
+      - /opt/kindling/dispram/python:/opt/dispram:ro
+      # glm47_repair: kindling's fail-closed GLM tool parser + recovery of nested/abandoned calls + keep-alives.
+      - ./glm47_repair.py:/usr/local/share/glm47_repair.py:ro
+    restart: "no"   # scripts/start.sh (or the systemd unit) owns startup: an ungated docker restart at boot races the CX7 links
+    environment:
+      - PYTHONPATH=/opt/dispram                     # dispram's vLLM general plugin (entry point in its dist-info)
+      - VLLM_DRAFT_TRUNC_TAU=${DT_TAU:-0.3}         # kindling draft-trunc threshold (0.2-0.45 measured flat; 0.3 best)
+      - VLLM_ARX_RING=1
+      - VLLM_ARX_MAX_BYTES=524288                   # arx one-shot up to its compiled 512 KiB: decode batches of ~6-11 requests stay off NCCL
+      - ARX_RING_PREV_HCAS=${ARX_RING_PREV_HCAS}
+      - ARX_RING_NEXT_HCAS=${ARX_RING_NEXT_HCAS}
+      - NCCL_IB_SUBNET_AWARE_ROUTING=1
+      - NCCL_CROSS_NIC=1
+      # tp3.yaml's EXTRA_ARGS, restated with: the DFlash block-drop fix, low default reasoning effort, the repair
+      # parser, 64-token prefix matching (needs patches/0001) and GRAPH_ARGS (21 CUDA-graph sizes; see README).
+      - EXTRA_ARGS=--scheduler-cls vllm.v1.core.sched.adaptive_k.AdaptiveKScheduler --speculative-config {"method":"dflash","disable_eagle_block_drop":true,"model":"/models/glm-5.3-flash-dflash2","num_speculative_tokens":7,"attention_backend":"TRITON_ATTN","num_speculative_tokens_per_batch_size":[[1,1,7],[2,2,5],[3,3,4],[4,4,3],[5,5,2],[6,32,7]]} --mm-encoder-tp-mode data --default-chat-template-kwargs {"reasoning_effort":"low"} --tool-parser-plugin /usr/local/share/glm47_repair.py --tool-call-parser glm47_repair --prefix-match-unit 64 ${GRAPH_ARGS:-}

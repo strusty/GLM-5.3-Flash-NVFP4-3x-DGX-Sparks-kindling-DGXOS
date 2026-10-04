@@ -1,0 +1,24 @@
+# Install on the head: sed "s#@REPO@#$PWD#; s#@USER@#$USER#" scripts/glm53-triangle.service | sudo tee /etc/systemd/system/glm53-triangle.service
+# then: sudo systemctl daemon-reload && sudo systemctl enable glm53-triangle
+# Type=oneshot with a long start timeout: multi-user.target waits for it, which matters if you also use the
+# 64K-kernel trial kit (dgxos/k64), whose boot timeout must exceed this unit's start time.
+[Unit]
+Description=GLM-5.3-Flash NVFP4 on kindling, TP=3 across three GB10 boxes (gate, start all ranks, prove a generation)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=@USER@
+ExecStartPre=@REPO@/scripts/wait-for-ranks.sh
+ExecStart=@REPO@/scripts/start.sh
+ExecStop=@REPO@/scripts/start.sh down
+TimeoutStartSec=3600
+TimeoutStopSec=300
+Restart=on-failure
+RestartSec=180
+
+[Install]
+WantedBy=multi-user.target

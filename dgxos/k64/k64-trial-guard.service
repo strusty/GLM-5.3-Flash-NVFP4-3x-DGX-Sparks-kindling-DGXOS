@@ -1,0 +1,9 @@
+64K-kernel trial guard (see k64-trial-guard). Default
+# dependencies only (After=basic.target): no custom ordering, so it cannot create a boot ordering cycle.
+[Unit]
+Description=64K-kernel trial guard: revert to the saved kernel unless confirmed
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/k64-trial-guard
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+scripts/local.sh
+bench/results/
+bench/psbench-*.json
+bench/evals/*.jsonl
+bench/evals/records-*.json
+bench/evals/evals-*.json
+__pycache__/

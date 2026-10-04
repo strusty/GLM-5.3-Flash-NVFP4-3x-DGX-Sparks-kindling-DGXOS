@@ -1,0 +1,13 @@
+on the 64K kernel a transparent huge page is 512 MiB and THP raises
+# min_free_kbytes toward 5% of RAM, eating the memory the 64K kernel returns (kindling-spark-os
+# README). Turn THP off and re-apply our 1 GiB min_free. Does nothing on the 4K kernel.
+[Unit]
+Description=64K kernel: transparent hugepages off, keep min_free_kbytes
+ConditionKernelVersion=*-64k
+Before=docker.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled; echo never > /sys/kernel/mm/transparent_hugepage/defrag; sysctl -q -p /etc/sysctl.d/91-inference-minfree.conf'
+[Install]
+WantedBy=multi-user.target

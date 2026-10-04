@@ -1,0 +1,22 @@
+# Lend the GB10 display carveout (2046 MiB the driver never uses on this chip) to CUDA processes.
+# kindling-spark-os's dispram unit, plus Before=docker.service so the socket exists before any engine starts.
+# /etc/kindling/dispram.env names the driver release librmlist.so was built for; on any other driver dispramd
+# exits 3 and lends nothing (vLLM then sizes KV without it).
+[Unit]
+Description=Display carveout lender (dispram)
+After=nvidia-persistenced.service
+Before=docker.service
+ConditionPathExists=/dev/nvidiactl
+ConditionPathExists=/etc/kindling/dispram.env
+
+[Service]
+EnvironmentFile=/etc/kindling/dispram.env
+Environment=DISPRAM_LIB=/opt/kindling/dispram/librmlist.so
+Environment=DISPRAM_SOCKET=/run/dispram/dispram.sock
+ExecStart=/usr/bin/python3 /opt/kindling/dispram/dispramd.py
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=3
+
+[Install]
+WantedBy=multi-user.target

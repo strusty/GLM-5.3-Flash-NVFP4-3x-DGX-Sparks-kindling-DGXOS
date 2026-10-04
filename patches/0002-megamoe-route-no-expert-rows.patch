@@ -1,0 +1,31 @@
+# megamoe: route rows with no routed experts (vLLM marks them -1) to expert 0 at weight 0; without it every
+# mixed prefill+decode batch crashes all ranks (scatter_add out of bounds, Xid 43). Applies to kindling a3c3a1d;
+# upstream fixed the same bug later in 6ffa0b6 (#67).
+diff --git a/experimental/megamoe/megamoe_vllm.py b/experimental/megamoe/megamoe_vllm.py
+index 211ebfc..79a1636 100644
+--- a/experimental/megamoe/megamoe_vllm.py
++++ b/experimental/megamoe/megamoe_vllm.py
+@@ -91,6 +91,11 @@ def prefill_routed(m, x, topk_weights, topk_ids, y8: bool = False, x4=None):
+     w13, w2 = m.w13_weight, m.w2_weight
+     E, H, I = w13.shape[0], w2.shape[1], w13.shape[1] // 2
+     M, topk = topk_ids.shape
++    # vLLM marks a row with no routed experts as id -1 / weight 0 (seen in
++    # mixed prefill+decode batches at TP=3 on a triangle). This kernel indexes by expert id, so a
++    # -1 tripped scatter_add_ ("index out of bounds", Xid 43). Point such ids at expert 0: their
++    # weight is 0, so finalize adds exactly nothing for them, the same as CUTLASS skipping them.
++    topk_ids = topk_ids.masked_fill(topk_ids < 0, 0)
+     from vllm import _custom_ops as ops
+ 
+     if x4 is None:
+@@ -154,6 +159,11 @@ def _buffers(M: int, topk: int, H: int, I: int, device) -> dict:
+ def _apply(self, layer, x, topk_weights, topk_ids, shared_experts, shared_experts_input):
+     global _check_left
+     M = x.shape[0]
++    # -1 ids (rows with no routed experts) -> expert 0 at weight 0. Elementwise,
++    # no host sync; the result is identical to skipping the row.
++    neg = topk_ids < 0
++    topk_ids = topk_ids.masked_fill(neg, 0)
++    topk_weights = topk_weights.masked_fill(neg, 0)
+     if (_PREFILL and M >= _PREFILL_MIN and x.dtype == torch.bfloat16 and hasattr(layer, "_moe_prefill_experts")
+             and not torch.cuda.is_current_stream_capturing()):
+         out = _prefill(layer, x.contiguous(), topk_weights, topk_ids)

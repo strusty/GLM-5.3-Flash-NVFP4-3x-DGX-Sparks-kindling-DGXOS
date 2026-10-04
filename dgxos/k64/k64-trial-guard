@@ -1,0 +1,26 @@
+#!/bin/sh
+# Trial guard for the 64K-kernel move (dgxos/k64).
+# On a 64K-kernel boot while /var/lib/k64-trial/armed exists: reboot back to the saved (4K) default
+# kernel unless /var/lib/k64-trial/confirmed appears within WINDOW seconds. Confirmation is written
+# over SSH only after networking, the GPU and the CX7 ring check out, so a boot that loses the
+# network can never be confirmed and always reverts. On a 4K boot it only records a failed trial.
+D=/var/lib/k64-trial; WINDOW=${K64_TRIAL_WINDOW:-900}
+log() { echo "k64-trial-guard: $*"; logger -t k64-trial-guard "$*" 2>/dev/null; }
+case "$(uname -r)" in
+  *-64k) ;;
+  *) if [ -e $D/armed ]; then log "booted $(uname -r) with a 64K trial armed: the trial did not hold; disarmed"; mv $D/armed $D/reverted-$(date +%s); fi
+     exit 0 ;;
+esac
+[ -e $D/armed ] || { log "64K kernel, no trial armed: nothing to do"; exit 0; }
+# GRUB clears next_entry itself; clear it again so any reset from here lands on the saved default.
+grub-editenv /boot/grub/grubenv unset next_entry 2>/dev/null
+log "64K trial boot: reverting to the saved default kernel in ${WINDOW}s unless $D/confirmed appears"
+t=0
+while [ $t -lt "$WINDOW" ]; do
+  if [ -e $D/confirmed ]; then log "confirmed after ${t}s; trial disarmed"; rm -f $D/armed; exit 0; fi
+  sleep 5; t=$((t + 5))
+done
+log "NOT confirmed within ${WINDOW}s: rebooting to the saved default kernel"
+sync; systemctl reboot
+sleep 180
+log "graceful reboot did not finish in 180 s: forcing"; sync; systemctl reboot --force --force

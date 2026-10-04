@@ -1,0 +1,38 @@
+# Skip the DFlash drafter's own KV pool in copy_kv_cache_blocks_inplace. Its block ids address the target
+# pool, and the drafter pool has a different block count (705 vs 567 at TP=3), so the first partial prefix-cache
+# hit (--prefix-match-unit 64) fails the "kernel blocks not divisible" assert on every rank. Proposed upstream as
+# kindlingai/glm-5.3-flash-gx10#76 (stage 1). Applies to kindling a3c3a1d.
+diff --git a/experimental/fixes/worker_utils.py b/experimental/fixes/worker_utils.py
+index cca4112..95b1320 100644
+--- a/experimental/fixes/worker_utils.py
++++ b/experimental/fixes/worker_utils.py
+@@ -47,6 +47,11 @@ from vllm.v1.worker.block_table import get_block_table_width
+ 
+ logger = init_logger(__name__)
+ 
++# data_ptrs of the DFlash2 drafter's own KV pool, recorded by the
++# block zeroer, which tells drafter layers by spec. copy_kv_cache_blocks_inplace skips them: its
++# block ids are target-pool ids, and the drafter pool has its own block count (705 vs 567 at TP=3).
++_DRAFT_POOL_KV_PTRS: set[int] = set()
++
+ 
+ def raise_if_nan_logits(num_nans_in_logits: Mapping[str, int]) -> None:
+     if not any(num_nans_in_logits.values()):
+@@ -180,6 +185,7 @@ class KVBlockZeroer:
+                 # pages outnumber the 3584-token target blocks (705 to 567).
+                 if (isinstance(spec, DraftSlidingWindowSpec)
+                         and _glm5_next_draft_pool_enabled()):
++                    _DRAFT_POOL_KV_PTRS.add(dp)  # the copy path skips these too
+                     continue
+                 assert kv.shape[0] % num_blocks == 0, (
+                     f"{layer_name}: {kv.shape[0]} kernel blocks is not a "
+@@ -712,6 +718,9 @@ def copy_kv_cache_blocks_inplace(
+         if key in seen:
+             continue
+         seen.add(key)
++        # the drafter's pool is not addressed by these (target) block ids.
++        if cache.data_ptr() in _DRAFT_POOL_KV_PTRS:
++            continue
+ 
+         if indices is None:
+             indices = async_tensor_h2d(indices_np, device=cache.device)
