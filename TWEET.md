@@ -55,4 +55,3 @@ Also in the repo:
 Huge credit to kindling (the engine, ARX, adaptive-k, megamoe, dispram) and Mia's AI Lab (TensorFold, sparkDash).
 We stood on their shoulders.
 
-— Stuart & his buddy Claude

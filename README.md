@@ -1,7 +1,7 @@
 <h1 align="center">GLM-5.3-Flash NVFP4 on three DGX Sparks, stock DGX OS</h1>
 
 <p align="center">
-  <sub>by Stuart Trusty and his buddy Claude · built on <a href="https://github.com/kindlingai/glm-5.3-flash-gx10">kindling</a></sub>
+  <sub>built on <a href="https://github.com/kindlingai/glm-5.3-flash-gx10">kindling</a></sub>
   <br><br>
   <img src="https://img.shields.io/badge/DGX%20Spark-%C3%973%20(GB10)-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="3x DGX Spark" height="28">
   <img src="https://img.shields.io/badge/quant-NVFP4-76B900?style=for-the-badge" alt="NVFP4" height="28">
@@ -227,16 +227,12 @@ The files in this repository are MIT ([LICENSE](LICENSE)). Nothing from kindling
 dispram is fetched from kindling-spark-os at install time and keeps its licences (server AGPL-3.0, client GPL-3.0
 with a bundling exception).
 
-## Credits
+## Thanks
 
-- **[kindling](https://github.com/kindlingai/glm-5.3-flash-gx10)** (kindlingai): the engine everything here runs on.
-  Its vLLM integration, ARX, adaptive-k, draft-trunc, megamoe, dense FP8/NVFP4, weight snapshots and the fail-closed
-  GLM parser are what make NVFP4 fast on GB10. Join their discord from the kindling README.
-- **[kindling-spark-os](https://github.com/kindlingai/kindling-spark-os)**: dispram, and the 64 KiB-page / THP-off
-  insight. This repo is a way to take those gains without its OS.
+- **[kindling](https://github.com/kindlingai/glm-5.3-flash-gx10)**: the engine everything here runs on. Its vLLM
+  integration, ARX, adaptive-k, draft-trunc, megamoe, dense FP8/NVFP4, weight snapshots and fail-closed GLM parser
+  are what make NVFP4 fast on GB10. [kindling-spark-os](https://github.com/kindlingai/kindling-spark-os) gave us
+  dispram and the 64 KiB-page / THP-off insight; this repo is a way to take those gains without its OS.
 - **[Mia's AI Lab](https://x.com/MiaAI_lab)**: the [TensorFold recipe](https://github.com/MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold)
   that set the bar and inspired the resume and tool-call work, and [sparkDash](https://github.com/MiaAI-Lab/sparkDash),
   the benchmark everyone shares.
-- Z.AI ([GLM-5.3-Flash](https://huggingface.co/zai-org)), NVIDIA (the NVFP4 checkpoint, open-gpu-kernel-modules),
-  incoai (DFlash2), [mentat](https://github.com/mmastrac/mentat), vLLM.
-- Put together by **Stuart Trusty and his buddy Claude**.
