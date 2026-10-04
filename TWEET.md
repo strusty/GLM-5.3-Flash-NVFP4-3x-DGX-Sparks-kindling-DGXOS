@@ -33,6 +33,7 @@ That's ~7 GB per box back. Half went to KV (+26%), half to headroom (2× the old
 **4/7**
 Numbers (sparkDash, warm, idle-gated runs):
 • prose 66 / 116 / 156 / 179 tok/s at 1 / 4 / 8 / 12 streams
+• code peaks ~480 tok/s aggregate with many streams
 • 64k prompt: 20 s cold, 0.41 s resent
 • agent follow-up turn: 0.6–1.1 s
 • GSM8K 96.4% (all 1,319), HumanEval 94.5%

@@ -28,6 +28,8 @@ TP=3 tunings measured over a weekend of agent traffic.
 prefill feels almost instant.
 
 - **~3,100–3,500 tok/s cold prefill.** A 64k-token prompt is ready in 20 s; resending it takes 0.41 s.
+- **Output spikes to ~480 tok/s** aggregate on code with a dozen-plus streams (sparkDash's live readout; the
+  best full 512-token run measured 410 tok/s at 12 streams, and the tables below give medians).
 - **No 8-request cap.** vLLM schedules up to 64 sequences. The FP8 KV pool holds **3,054,135 tokens**, which is
   **11.65 full 262k-token conversations** at once (or ~45 at 66k). Bursts of 12–15 concurrent agents run without queuing.
 - **Runs cool.** The NVFP4 tensor-core path keeps a GB10 out of thermal clamps that EXL3 trellis decode hits
@@ -56,6 +58,7 @@ DGX OS, kernel `6.17.0-1026-nvidia-64k`, drivers 580.159.03 / 580.173.02, CX7 tr
 | Code | 106–118 | 189–230 | 267–327 | 298–376 |
 
 Code swings ±15–30% from run to run at the same settings (DFlash2 acceptance on code is bursty), so ranges are given.
+The best code run reached 410 tok/s at 12 streams, and the live readout has spiked to ~480 tok/s.
 
 **Prefill (cold) and time to first token**
 
