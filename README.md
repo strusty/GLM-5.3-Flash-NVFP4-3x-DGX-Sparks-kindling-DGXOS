@@ -2,6 +2,20 @@
 
 <p align="center">
   <sub>by Stuart Trusty and his buddy Claude · built on <a href="https://github.com/kindlingai/glm-5.3-flash-gx10">kindling</a></sub>
+  <br><br>
+  <img src="https://img.shields.io/badge/DGX%20Spark-%C3%973%20(GB10)-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="3x DGX Spark" height="28">
+  <img src="https://img.shields.io/badge/quant-NVFP4-76B900?style=for-the-badge" alt="NVFP4" height="28">
+  <img src="https://img.shields.io/badge/OS-stock%20DGX%20OS-0A84FF?style=for-the-badge&logo=ubuntu&logoColor=white" alt="stock DGX OS" height="28">
+  <a href="https://github.com/kindlingai/glm-5.3-flash-gx10"><img src="https://img.shields.io/badge/built%20on-kindling-FF7A00?style=for-the-badge" alt="built on kindling" height="28"></a>
+  <br>
+  <img src="https://img.shields.io/badge/prefill-~3%2C300%20tok%2Fs-0FB5AE?style=for-the-badge" alt="prefill ~3,300 tok/s" height="28">
+  <img src="https://img.shields.io/badge/KV%20pool-3.05M%20tokens-0FB5AE?style=for-the-badge" alt="KV pool 3.05M tokens" height="28">
+  <img src="https://img.shields.io/badge/requests-up%20to%2064-0FB5AE?style=for-the-badge" alt="up to 64 requests" height="28">
+  <img src="https://img.shields.io/badge/license-MIT-555555?style=for-the-badge" alt="MIT" height="28">
+</p>
+
+<p align="center">
+  <img src=".github/banner.png" alt="GLM-5.3-Flash NVFP4 on 3x DGX Spark, stock DGX OS, built on kindling" width="100%">
 </p>
 
 Serve **GLM-5.3-Flash** from three NVIDIA DGX Sparks / ASUS Ascent GX10 (GB10, 128 GB each), cabled as a

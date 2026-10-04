@@ -2,6 +2,8 @@
 
 Ready to paste. Each block is one post; 1/7 carries the link. Swap in kindling's X handle if they have one.
 
+The link card on X shows the repo's social preview image (`.github/banner.png`, set in the repo's Settings → General → Social preview). Post 1 as text + link and X draws the card; attaching your own image to that post replaces the card.
+
 ---
 
 **1/7**
