@@ -34,7 +34,11 @@ prefill feels almost instant.
   **11.65 full 262k-token conversations** at once (or ~45 at 66k). Bursts of 12–15 concurrent agents run without queuing.
 - **Runs cool.** The NVFP4 tensor-core path keeps a GB10 out of thermal clamps that EXL3 trellis decode hits
   (head clamps ~0.6/h against ~21/h on an EXL3 engine on the same boxes).
-- **Same intelligence.** GSM8K 96.4% on all 1,319 problems with thinking off (an estimated ~97.6–98% with thinking on), HumanEval 94.5%.
+- **Same intelligence.** With thinking on, the way agents run it: GSM8K 98.4% and HumanEval 93.9% at the default low
+  reasoning effort, 99.2% and 98.2% at max effort. Thinking off: GSM8K 96.4% on all 1,319 problems, HumanEval 94.5%.
+- **Fair to a crowd of agents (v1.1, opt-in).** While one agent's 100k-token prompt is read in, the others keep
+  writing at 4.6–4.9 tok/s instead of 1.5–1.7. An interactive turn behind a burst of six sub-agent prompt reads gets
+  its first token in 12.7 s instead of 38.6 s. See [Many agents at once](#many-agents-at-once-v11-opt-in).
 - **Agent-safe tool calls.** Nested or abandoned GLM tool calls are refused with a recovery hint instead of
   executed, and long buffered calls send keep-alives.
 - Checkpoint: [`nvidia/GLM-5.3-Flash-NVFP4`](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)
@@ -83,6 +87,63 @@ on the head, 8.5–8.9 GiB on the workers. Under a 12-stream bench: 6.5 GiB.
 on the first 250). All 48 misses were genuine reasoning slips in short answers; asked again with thinking on, 16–21
 of them come right (~97.6–98.0%). HumanEval **94.5%** (155/164). See [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md#quality).
 
+**Reasoning effort, low vs max** (thinking on, greedy, 16 requests at a time). Effort is per request:
+`chat_template_kwargs: {"reasoning_effort": "low"}`; any value other than `low` or `high` renders as Max.
+
+| | Low (the default) | Max |
+| --- | ---: | ---: |
+| GSM8K, first 250 | 98.4% | 99.2% |
+| HumanEval | 93.9% (154/164) | 98.2% (161/164) |
+| Wall time, GSM8K / HumanEval | 108 s / 108 s | 505 s / 2,554 s |
+| Mean reply length, GSM8K / HumanEval | 79 / 169 tokens | 364 / 2,153 tokens |
+| Decode at 12 streams, prose / code (thinking counted) | 137 / 190 tok/s | 139 / 162 tok/s |
+
+Max thinks 5–13× longer for about one point on GSM8K and four on HumanEval. On code it also decodes slower, because
+its output is mostly reasoning, which DFlash2 drafts like prose. 3 of 414 max-effort answers thought until a 32k
+cap. Low stays the default.
+
+### Many agents at once (v1.1, opt-in)
+
+Raw speed is not the bottleneck for a crowd of agents. Two things are:
+
+- one agent's long cold prompt nearly stops everyone else's stream while it is read in;
+- an interactive turn queues behind a burst of sub-agent prompt reads.
+
+Two opt-in scheduler knobs fix both. A third tags sub-agents for clients that can't send vLLM's `priority` field
+(Hermes sub-agents are the example). Measured on these boxes, bench traffic only, every run on an idle engine:
+
+| Test | Before | After |
+| --- | --- | --- |
+| A 100k-token cold prompt read beside 4 decoding streams | streams 1.5–1.7 tok/s; read 37 s | `cadence 4`: streams **4.6–4.9 tok/s**; read 43 s |
+| 6 sub-agent 20k prompts + 1 interactive 8k prompt at once | interactive first token 38.6 s | priority + parking: **12.7 s** (sub-agents 35–40 s) |
+| Plain decode 1–12 streams, cold prefill 16k / 64k | — | unchanged within noise |
+
+- The trade is a longer cold read (+16% at cadence 4; cadence 8 gives the others 7.9 tok/s for a 51.5 s read).
+  That is why these are knobs and not defaults.
+- The code is two commits on our kindling fork, proposed upstream in
+  [kindling #87](https://github.com/kindlingai/glm-5.3-flash-gx10/issues/87). Both apply cleanly to the pinned
+  a3c3a1d.
+- To use them, on every box:
+
+      curl -sL https://github.com/strusty/glm-5.3-flash-gx10/commit/d0d5cf2.patch | git -C ~/glm53-kindling am
+      cat >> ~/glm53-kindling/compose/.env <<'X'
+      SCHED_ARGS=--scheduling-policy priority
+      VLLM_PREFILL_CADENCE=4
+      VLLM_PRIO_PREFILL=1
+      # Hermes sub-agents (" focused subagent working on a specific delegated task") at priority 5:
+      VLLM_MARKER_PRIORITY=5
+      VLLM_MARKER_IDS=10730,1186,8091,3238,389,264,3151,89908,3383
+      X
+
+  Then `./scripts/stop.sh && ./scripts/start.sh`. A JSON file at `/root/.cache/sched-ctl.json` inside the
+  container overrides any knob live (e.g. `{"cadence":4,"prio_prefill":1}`), for A/B tests without a restart.
+- The second commit, [`c8e9bff`](https://github.com/strusty/glm-5.3-flash-gx10/commit/c8e9bff), adds an opt-in
+  `effort_tail` to the chat template. It moves the effort line to just before the reply, so an agent can change
+  effort mid-conversation without re-reading its history.
+  - The default render is token-identical.
+  - At the tail the model still honours max effort: GSM8K 39/40 at 247 tokens vs 38/40 at 271.
+  - It takes effect after an image rebuild, or by mounting the template over `/usr/local/share/glm53-chat-template.jinja`.
+
 ## Why this instead of kindling-spark-os or Mia's TensorFold recipe
 
 **Compared with [kindling-spark-os](https://github.com/kindlingai/kindling-spark-os)** (kindling's own minimal OS):
@@ -119,6 +180,7 @@ You keep DGX OS, NVIDIA's dashboard and support path, and anything else you run 
 | Resume (identical 64k / shared system prompt) | 0.41 / 0.28 s | **<0.07 / 0.13 s** |
 | Head free memory under load | 6.2–6.5 GiB | **11.5–12.5 GiB** |
 | GSM8K / HumanEval (thinking off) | 96.4% (full set) / 94.5% | 98.8% (first 250) / 95.7% |
+| GSM8K / HumanEval (thinking on, low / max effort) | 98.4 / 93.9% · **99.2 / 98.2%** | — |
 | Heat | cool (NVFP4 tensor cores) | EXL3 trellis decode runs hot |
 
 Her recipe is the better pick for a few long-context conversations (1M window, instant resume, best single-stream
@@ -133,6 +195,35 @@ prompt, not the reply, dominates the wait.
   `experimental/tp3` README.
 - kindling's prerequisites on every box: its image built, [mentat](https://github.com/mmastrac/mentat) running, and
   the TP=3 padded checkpoints (~180 GB) plus room for one ~69 GB weight snapshot per box.
+
+## Running headless, and other switchless-triangle gotchas
+
+**Run every box headless.**
+
+- A logged-in desktop session keeps its framebuffer in the GPU's display carveout. dispram's fill/verify fails while
+  one runs, so a box with a desktop gets no dispram (and vLLM sizes the KV pool by the smallest rank).
+- A desktop also shares unified memory and the power budget with the model. kindling's own advice is not to
+  benchmark with one running.
+- On each box:
+
+      sudo systemctl set-default multi-user.target
+      sudo systemctl isolate multi-user.target     # now; or reboot
+
+  Check: `systemctl get-default` prints `multi-user.target`, and `nvidia-smi` lists no `Xorg` or `gnome-shell`.
+  Undo with `sudo systemctl set-default graphical.target`.
+- What we saw: a GDM login screen with nobody logged in (Xorg + gnome-shell, ~25 MiB of GPU memory) did not stop
+  dispram on one of our boxes. A logged-in desktop is what breaks it. Headless is the clean state.
+
+**One RoCE GID index on every port.** kindling needs every fabric port on a box to share one RoCE GID index. An IPv6
+link-local address on some ports pushes IPv4 to index 5. Disable IPv6 on every CX7 NetworkManager profile
+(`nmcli connection modify <profile> ipv6.method disabled`), which puts IPv4 at index 3 everywhere. The boot gate in
+`scripts/` checks for it.
+
+**mentat island placement.** Each cable is its own subnet, so no mentat island holds all three GPUs and placement
+sits PENDING. Set `MENTAT_ISLAND_PLACEMENT=off` on every `mentatd`.
+
+**Pin the head.** mentat elects the lowest LAN address as head. If the box that should serve the API isn't the
+lowest, set `ROLE` and `HEAD_HOST` on each box.
 
 ## Quick start
 
@@ -179,6 +270,8 @@ At boot, gated on docker, mentat, all four CX7 links and RoCE GIDs on every box:
 | `DT_TAU` | `0.3` | kindling's draft-trunc threshold (0.2 / 0.3 / 0.45 measured flat; 0.3 best) |
 | `NETDEVS`, `F0_HCAS`, `F1_HCAS` | GB10 defaults | CX7 netdevs and the ARX ring's RDMA devices; `start.sh` swaps the two lists once if mentat orders the workers the other way round |
 | `CABLE_CHECKS` | empty | optional `host src dst` lines the boot gate pings |
+| `SCHED_ARGS` | empty | extra engine flags; `--scheduling-policy priority` for [Many agents at once](#many-agents-at-once-v11-opt-in) (set in `compose/.env`) |
+| `BREAKABLE_CG` | `1` | vLLM's breakable CUDA graphs ([Limits](#limits)); `0` only if you hit kindling #85 (set in `compose/.env`) |
 
 ## What this changes on top of kindling (a3c3a1d)
 
@@ -191,6 +284,7 @@ At boot, gated on docker, mentat, all four CX7 links and RoCE GIDs on every box:
 | dispram on DGX OS | `dgxos/dispram/` | see above |
 | 64K kernel on DGX OS | `dgxos/k64/` | see above |
 | Launch | `scripts/` | all three ranks down, then up head-first; fix the ARX ring order once if mentat mirrors it; /health; one generation. Boot gate with the RoCE GID-3 fix. |
+| Opt-in scheduling, effort tail (v1.1) | kindling fork commits `d0d5cf2`, `c8e9bff` | not installed by default; see [Many agents at once](#many-agents-at-once-v11-opt-in). Proposed upstream as [#87](https://github.com/kindlingai/glm-5.3-flash-gx10/issues/87). |
 | Measurement | `bench/` | idle-gated sparkDash benches, a guarded long-prompt needle test, GSM8K/HumanEval with a sandbox and miss classification |
 
 ## Limits
@@ -207,7 +301,17 @@ At boot, gated on docker, mentat, all four CX7 links and RoCE GIDs on every box:
   decode the head GPU is busy 96% of the time anyway, so it could win at most ~4%.
 - **Copy drafts** (TensorFold's prompt-lookup drafts): simulated over 3,040 real agent replies, only 12% of
   generated tokens repeat context, and even a perfect selector gives ~1.00× over DFlash2. Not built.
-- **A restart empties the prefix cache**, so every conversation's next turn pays one cold prefill.
+- **A restart empties the prefix cache**, so every conversation's next turn pays one cold prefill: 41 s for an
+  87k-token agent conversation. Replaying each conversation's last request at low priority right after a restart
+  brings that to 2.4 s. It needs a request proxy that keeps those requests, so it isn't in this repo yet.
+- **Breakable CUDA graphs** stay on. kindling #85 reports a TP=3 rank-0 crash with them on vLLM's mp executor. On
+  mentat we have seen none in 2.5+ days of agent traffic sampling at top_p 0.95, and turning them off cost 8% of
+  cold prefill and 25% of code decode at 8 streams. If you hit it (`Triton Error [CUDA]: operation not permitted`
+  on rank 0), set `BREAKABLE_CG=0` and restart all three ranks together.
+- **Heat on the head.** Under sustained 8–16-stream load (benchmarks, max-effort evals), our head's hottest SoC sensor
+  reached 90–94 °C while its GPU read 69–77 °C. The workers stayed cooler. The head also runs the API server and
+  scheduler. Give it the best airflow, and watch `/sys/class/thermal/thermal_zone*/temp` rather than the GPU
+  temperature alone.
 - kindling has moved on since a3c3a1d (c748079 adds its own dispram integration for kindling-spark-os). This
   recipe pins what was measured.
 

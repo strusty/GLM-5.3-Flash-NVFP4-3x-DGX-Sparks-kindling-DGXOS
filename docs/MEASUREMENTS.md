@@ -91,3 +91,61 @@ Batched serving is not bit-deterministic at temperature 0: HumanEval moved by 2 
 Over two days of real agent traffic, 5 of 5,094 GLM tool calls carried tool-call markup inside an argument (4
 opened inside the reasoning, 1 abandoned mid-argument). Upstream's parser executed all five. `glm47_repair`
 refuses them with the recovered call spelled out.
+
+## v1.1: many agents, effort, and four A/Bs (2026-10-09)
+
+Same boxes and stack as above. Bench traffic only. Each run waited for an idle engine and was repeated when outside
+traffic overlapped it. Before = the same engine that evening, before any change.
+
+**Cold read beside decoding streams** (4 streams reach steady decode, then a fresh ~100k-token prompt with a needle
+arrives):
+
+| Prefill cadence | Others during the read | Read time |
+| --- | ---: | ---: |
+| off (stock) | 1.5–1.7 tok/s | 36.6–37.4 s |
+| 4 | 4.6–4.9 tok/s | 43.1–43.5 s |
+| 8 | 7.9 tok/s | 51.5 s |
+
+**Interactive turn behind sub-agents** (6 marker-tagged 20k prompts and 1 interactive 8k prompt sent together, fresh text):
+
+| | Interactive first token | Sub-agents |
+| --- | ---: | ---: |
+| FCFS (stock) | 38.4–38.9 s | — |
+| `--scheduling-policy priority` + marker priority 5 | 21.2–25.8 s | — |
+| + priority parking | 12.7–13.0 s | 35–40 s |
+
+Six agents sharing a fresh 12k prefix: 3.9–5.6 s, unchanged. Holding later requests until the shared prefix is cached
+gained nothing, because vLLM already shares in-flight prefix blocks.
+
+**Restart re-warm:** an 87,235-token agent conversation's first token after an engine restart was 41.4 s cold and
+2.4 s after replaying its last request with `max_tokens 1` at low priority.
+
+**Breakable CUDA graphs** (kindling #85; fused conv, one variable, one restart each):
+
+| | Off | On (default) |
+| --- | ---: | ---: |
+| Cold prefill 16k / 64k | 3,084 / 3,215 tok/s | 3,334 / 3,495 tok/s |
+| Code, 8 / 12 streams | 226 / 366 tok/s | 303.5 / 361 tok/s |
+| Prose, 8 / 12 streams | 148 / 169 tok/s | 153 / 171 tok/s |
+
+**Fused DFlash2 conv vs the upstream revert** (kindling #83 / vllm#58250): acceptance length with k forced to 7,
+temperature 0, six fixed prompts, two runs each: 3.03 fused vs 3.07 unfused (run spread ±3%). Speed: a tie. Kept fused.
+
+**Adaptive-k** (kindling #84), 80k-token contexts:
+
+| Mode | 1 stream | 4 streams, aggregate |
+| --- | ---: | ---: |
+| Batch k, after a day of agent traffic | 32–36 | 81.5–86.6 |
+| Batch k, fresh engine, bench traffic only | 36–46 (first run after boot: 24.5) | 73–86 |
+| Per-request k | 41.6 | 76.1–79.7 (prose at 4 streams −9.5%) |
+| Forced k=7 | 31–33 | 61.8–62.1 |
+| k=7 every 16th single-stream step | 34–43 | 78–80 |
+
+**Final config, server default low effort, before → after:**
+- prose 1/4/8/12: 62.6 / 111.7 / 151.8 / 169.6 → 64.1 / 110.1 / 145.3 / 174.1;
+- code: 107.3 / 185.7 / 299.9 / 303.1 → 109.5 / 197.9 / 266.1 / 334.6;
+- prefill 16k / 64k: 3,312 / 3,489 → 3,373 / 3,504.
+
+**Effort, thinking on** (greedy, 16 at a time): see the README table. Max effort on GSM8K's first 40 with the effort
+line at the tail (`effort_tail`): 39/40 at 247 tokens mean, against 38/40 at 271 with it at the head.
+

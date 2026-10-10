@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1 (2026-10-10)
+
+Measurements and docs; nothing changes unless you opt in.
+
+- **Many agents at once (opt-in):** two kindling commits on our fork, proposed upstream as kindling #87:
+  - prefill cadence: the others keep 4.6–4.9 tok/s instead of 1.5–1.7 while a 100k prompt is read in;
+  - priority parking plus sub-agent tagging: an interactive turn behind six sub-agent reads waits 12.7 s instead of 38.6 s;
+  - an opt-in `effort_tail` template.
+- **Overlay:** `SCHED_ARGS` (empty) for `--scheduling-policy priority`, and `BREAKABLE_CG` (default 1, unchanged
+  behaviour) as the kindling #85 escape hatch.
+- **README:**
+  - running headless (dispram fails beside a logged-in desktop), one RoCE GID index, mentat island placement, pinning the head;
+  - quality with thinking on at low vs max effort: 98.4 / 93.9% vs 99.2 / 98.2%;
+  - restart re-warm and heat notes.
+- **Measured** (docs/MEASUREMENTS.md):
+  - breakable CUDA graphs off costs 8% prefill and 25% code at 8 streams;
+  - kindling's fused DFlash2 conv vs the upstream revert: a tie;
+  - adaptive-k per-request mode, forced k=7 and exploration: no gain on clean traffic.
+
 ## v1.0 (2026-10-04)
 
 First release: kindling a3c3a1d at TP=3 on three GB10 boxes, on stock DGX OS.

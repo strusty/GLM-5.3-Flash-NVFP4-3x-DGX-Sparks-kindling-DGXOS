@@ -21,6 +21,11 @@ services:
       - ARX_RING_NEXT_HCAS=${ARX_RING_NEXT_HCAS}
       - NCCL_IB_SUBNET_AWARE_ROUTING=1
       - NCCL_CROSS_NIC=1
+      # Breakable CUDA graphs stay on (vLLM's default here). kindling #85 reports a TP=3 rank-0 crash with them on
+      # vLLM's mp executor; turning them off cost 8% prefill and 25% code decode at 8 streams on these boxes. If you
+      # hit "Triton Error [CUDA]: operation not permitted", set BREAKABLE_CG=0 and restart all three ranks together.
+      - VLLM_USE_BREAKABLE_CUDAGRAPH=${BREAKABLE_CG:-1}
       # tp3.yaml's EXTRA_ARGS, restated with: the DFlash block-drop fix, low default reasoning effort, the repair
-      # parser, 64-token prefix matching (needs patches/0001) and GRAPH_ARGS (21 CUDA-graph sizes; see README).
-      - EXTRA_ARGS=--scheduler-cls vllm.v1.core.sched.adaptive_k.AdaptiveKScheduler --speculative-config {"method":"dflash","disable_eagle_block_drop":true,"model":"/models/glm-5.3-flash-dflash2","num_speculative_tokens":7,"attention_backend":"TRITON_ATTN","num_speculative_tokens_per_batch_size":[[1,1,7],[2,2,5],[3,3,4],[4,4,3],[5,5,2],[6,32,7]]} --mm-encoder-tp-mode data --default-chat-template-kwargs {"reasoning_effort":"low"} --tool-parser-plugin /usr/local/share/glm47_repair.py --tool-call-parser glm47_repair --prefix-match-unit 64 ${GRAPH_ARGS:-}
+      # parser, 64-token prefix matching (needs patches/0001), GRAPH_ARGS (21 CUDA-graph sizes; see README) and
+      # SCHED_ARGS (empty; '--scheduling-policy priority' for the opt-in scheduling in README "Many agents at once").
+      - EXTRA_ARGS=--scheduler-cls vllm.v1.core.sched.adaptive_k.AdaptiveKScheduler --speculative-config {"method":"dflash","disable_eagle_block_drop":true,"model":"/models/glm-5.3-flash-dflash2","num_speculative_tokens":7,"attention_backend":"TRITON_ATTN","num_speculative_tokens_per_batch_size":[[1,1,7],[2,2,5],[3,3,4],[4,4,3],[5,5,2],[6,32,7]]} --mm-encoder-tp-mode data --default-chat-template-kwargs {"reasoning_effort":"low"} --tool-parser-plugin /usr/local/share/glm47_repair.py --tool-call-parser glm47_repair --prefix-match-unit 64 ${GRAPH_ARGS:-} ${SCHED_ARGS:-}
